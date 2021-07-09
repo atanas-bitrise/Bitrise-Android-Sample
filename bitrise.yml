@@ -22,6 +22,40 @@ app:
       is_expand: false
     GRADLEW_PATH: ./gradlew
 workflows:
+  emulator:
+    steps:
+    - avd-manager@1: {}
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - install-missing-android-tools@2:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: app
+        - cache_level: all
+        - variant: debug
+    - android-unit-test@1:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: app
+        - arguments: ''
+        - cache_level: all
+        - variant: debug
+    - android-build-for-ui-testing@0:
+        inputs:
+        - variant: debug
+        - module: app
+    - wait-for-android-emulator@1: {}
+    - gradle-runner@1:
+        inputs:
+        - gradle_file: "$BITRISE_SOURCE_DIR/app/build.gradle"
+        - gradle_task: connectAndroidTest
+    - deploy-to-bitrise-io@1:
+        inputs:
+        - notify_user_groups: none
   primary:
     steps:
     - activate-ssh-key@4:

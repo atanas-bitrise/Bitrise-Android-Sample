@@ -21,6 +21,7 @@ class HelloWorldEspressoTest {
 
     @Test
     fun helloWorldIsVisible() {
+        Thread.sleep(15000)
         onView(withText("Hello World!")).check(matches(isDisplayed()))
     }
 }

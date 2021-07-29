@@ -10,6 +10,19 @@ trigger_map:
 workflows:
   emulator:
     steps:
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+            echo $ANDROID_HOME
+            echo $ANDROID_SDK_ROOT
+            printenv
+            envman add --key ANDROID_HOME --value '/usr/local/share/android-sdk'
+            envman add --key ANDROID_SDK_ROOT --value '/usr/local/share/android-sdk'
     - git::https://github.com/DamienBitrise/steps-avd-manager.git@master:
         inputs:
         - api_level: '29'

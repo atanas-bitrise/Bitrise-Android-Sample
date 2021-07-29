@@ -18,7 +18,7 @@ workflows:
             set -e
             # debug log
             set -x
-            /usr/local/share/android-sdk/emulator/emulator -version
+            /usr/local/share/android-sdk/emulator/emulator "@emulator" -version
             echo $ANDROID_HOME
             echo $ANDROID_SDK_ROOT
             printenv

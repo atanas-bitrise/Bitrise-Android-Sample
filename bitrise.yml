@@ -1,17 +1,17 @@
 ---
 format_version: '8'
-default_step_lib_source: 'https://github.com/bitrise-io/bitrise-steplib.git'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: android
 trigger_map:
-- push_branch: '*'
+- push_branch: "*"
   workflow: primary
-- pull_request_source_branch: '*'
-  workflow: primary
+- pull_request_source_branch: "*"
+  workflow: emulator
 app:
   envs:
   - opts:
       is_expand: false
-    PROJECT_LOCATION: .
+    PROJECT_LOCATION: "."
   - opts:
       is_expand: false
     MODULE: app
@@ -20,8 +20,166 @@ app:
     VARIANT: ''
   - opts:
       is_expand: false
-    GRADLEW_PATH: ./gradlew
+    GRADLEW_PATH: "./gradlew"
+  - opts:
+      is_expand: false
+    GRADLE_OPTS1: "--stacktrace --no-daemon"
 workflows:
+  cradle-runner:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - gradle-runner@2:
+        inputs:
+        - gradle_task: build
+        - gradle_options: "$GRADLE_OPTS1"
+    - deploy-to-bitrise-io@1:
+        inputs:
+        - notify_user_groups: none
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-20.04
+  deploy:
+    description: |
+      ## How to get a signed APK
+
+      This workflow contains the **Sign APK** step. To sign your APK all you have to do is to:
+
+      1. Click on **Code Signing** tab
+      1. Find the **ANDROID KEYSTORE FILE** section
+      1. Click or drop your file on the upload file field
+      1. Fill the displayed 3 input fields:
+       1. **Keystore password**
+       1. **Keystore alias**
+       1. **Private key password**
+      1. Click on **[Save metadata]** button
+
+      That's it! From now on, **Sign APK** step will receive your uploaded files.
+
+      ## To run this workflow
+
+      If you want to run this workflow manually:
+
+      1. Open the app's build list page
+      2. Click on **[Start/Schedule a Build]** button
+      3. Select **deploy** in **Workflow** dropdown input
+      4. Click **[Start Build]** button
+
+      Or if you need this workflow to be started by a GIT event:
+
+      1. Click on **Triggers** tab
+      2. Setup your desired event (push/tag/pull) and select **deploy** workflow
+      3. Click on **[Done]** and then **[Save]** buttons
+
+      The next change in your repository that matches any of your trigger map event will start **deploy** workflow.
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - cache-pull@2: {}
+    - install-missing-android-tools@2:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: release
+    - android-unit-test@1:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: release
+    - android-build@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - build_type: aab
+        - variant: release
+    - sign-apk@1:
+        run_if: '{{getenv "BITRISEIO_ANDROID_KEYSTORE_URL" | ne ""}}'
+        inputs:
+        - use_apk_signer: 'true'
+    - deploy-to-bitrise-io@1: {}
+    - cache-push@2: {}
+  emulator:
+    steps:
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            avdmanager list device
+            sdkmanager --list
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@6: {}
+    - install-missing-android-tools@2:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-lint@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: app
+        - cache_level: all
+        - variant: debug
+    - android-unit-test@1:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: app
+        - arguments: ''
+        - cache_level: all
+        - variant: debug
+    - android-build-for-ui-testing@0:
+        inputs:
+        - variant: debug
+        - module: app
+    - avd-manager@1:
+        inputs:
+        - profile: pixel_2
+        - abi: armeabi-v7a
+        - api_level: '25'
+    - wait-for-android-emulator@1: {}
+    - script@1:
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            # write your script here
+            # adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS
+            # adb shell screencap -p /sdcard/screencap.png && adb pull /sdcard/screencap.png
+            # cp screencap.png $BITRISE_DEPLOY_DIR/screencap.png
+
+
+            # or run a script from your repository, like:
+            # bash ./path/to/script.sh
+            # not just bash, e.g.:
+            # ruby ./path/to/script.rb
+    - gradle-runner@2:
+        inputs:
+        - gradle_file: "$BITRISE_SOURCE_DIR/app/build.gradle"
+        - gradle_task: connectAndroidTest
+    - deploy-to-bitrise-io@1:
+        inputs:
+        - notify_user_groups: none
+    meta:
+      bitrise.io:
+        stack: osx-xcode-12.5.x
   primary:
     steps:
     - activate-ssh-key@4:
@@ -32,16 +190,16 @@ workflows:
         title: Do anything with Script step
     - install-missing-android-tools@2:
         inputs:
-        - gradlew_path: $PROJECT_LOCATION/gradlew
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
     - android-lint@0:
         inputs:
-        - project_location: $PROJECT_LOCATION
+        - project_location: "$PROJECT_LOCATION"
         - module: app
         - cache_level: all
         - variant: debug
     - android-unit-test@1:
         inputs:
-        - project_location: $PROJECT_LOCATION
+        - project_location: "$PROJECT_LOCATION"
         - module: app
         - arguments: ''
         - cache_level: all
@@ -53,96 +211,41 @@ workflows:
     - virtual-device-testing-for-android@1:
         inputs:
         - test_type: instrumentation
-        - directories_to_pull: /sdcard/
+        - directories_to_pull: "/sdcard/"
         - download_test_results: 'true'
         - environment_variables: |-
             coverage=true
             coverageFile=/sdcard/coverage.ec
-        - test_devices: 'NexusLowRes,29,en,portrait'
+        - test_devices: NexusLowRes,29,en,portrait
     - deploy-to-bitrise-io@1:
         inputs:
         - notify_user_groups: none
-    - cache-push@2: {}
-  deploy:
-    description: >
-      ## How to get a signed APK
-
-
-      This workflow contains the **Sign APK** step. To sign your APK all you
-      have to do is to:
-
-
-      1. Click on **Code Signing** tab
-
-      1. Find the **ANDROID KEYSTORE FILE** section
-
-      1. Click or drop your file on the upload file field
-
-      1. Fill the displayed 3 input fields:
-       1. **Keystore password**
-       1. **Keystore alias**
-       1. **Private key password**
-      1. Click on **[Save metadata]** button
-
-
-      That's it! From now on, **Sign APK** step will receive your uploaded
-      files.
-
-
-      ## To run this workflow
-
-
-      If you want to run this workflow manually:
-
-
-      1. Open the app's build list page
-
-      2. Click on **[Start/Schedule a Build]** button
-
-      3. Select **deploy** in **Workflow** dropdown input
-
-      4. Click **[Start Build]** button
-
-
-      Or if you need this workflow to be started by a GIT event:
-
-
-      1. Click on **Triggers** tab
-
-      2. Setup your desired event (push/tag/pull) and select **deploy** workflow
-
-      3. Click on **[Done]** and then **[Save]** buttons
-
-
-      The next change in your repository that matches any of your trigger map
-      event will start **deploy** workflow.
+    - cache-push@2:
+        inputs:
+        - cache_paths: "/User/vagrant/.gradle/wrapper/dists/gradle-6.7.1-bin"
+  temporary-folder:
     steps:
     - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@4: {}
+    - git-clone@6.2: {}
     - cache-pull@2: {}
-    - install-missing-android-tools@2:
+    - install-missing-android-tools@3:
         inputs:
-        - gradlew_path: $PROJECT_LOCATION/gradlew
-    - android-lint@0:
-        inputs:
-        - project_location: $PROJECT_LOCATION
-        - module: $MODULE
-        - variant: release
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
     - android-unit-test@1:
         inputs:
-        - project_location: $PROJECT_LOCATION
-        - module: $MODULE
+        - project_location: "$PROJECT_LOCATION"
+        - module: app
+        - arguments: ''
+        - cache_level: all
         - variant: release
-    - android-build@0:
+    - deploy-to-bitrise-io@2:
         inputs:
-        - project_location: $PROJECT_LOCATION
-        - module: $MODULE
-        - build_type: aab
-        - variant: release
-    - sign-apk@1:
-        run_if: '{{getenv "BITRISEIO_ANDROID_KEYSTORE_URL" | ne ""}}'
+        - notify_user_groups: none
+    - cache-push@2:
         inputs:
-        - use_apk_signer: 'true'
-    - deploy-to-bitrise-io@1: {}
-    - cache-push@2: {}
+        - cache_paths: "/User/vagrant/.gradle/wrapper/dists/gradle-6.7.1-bin"
+meta:
+  bitrise.io:
+    stack: linux-docker-android-20.04
+    machine_type_id: standard
